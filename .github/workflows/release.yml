@@ -51,6 +51,11 @@ jobs:
       - name: 测试
         run: npm test
 
+      - name: Ensure npm supports Trusted Publishing
+        run: |
+          npm install -g npm@11.5.1 || (sleep 15 && npm install -g npm@11.5.1)
+          npm --version
+
       - name: 发布（OIDC＋provenance）
         run: npm publish --provenance --access public
 
