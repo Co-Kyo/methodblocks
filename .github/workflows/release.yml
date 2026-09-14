@@ -18,7 +18,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: ancestry 门——tag 必须在 main 上
         run: |
@@ -40,7 +40,7 @@ jobs:
           fi
           echo "methodblocks@$V 未发布，可以发布"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org

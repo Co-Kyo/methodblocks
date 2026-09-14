@@ -13,7 +13,8 @@
 - `doc(reg, parts)`：按引用顺序拼成一篇 agent 能照着做的文档
 - 母版/实例对齐：example 声明 `master`，构建期保证"一字不抄、母版真进产物"
 - `whenToUse`：一句话适用条件（只在目录层投影）
-- `index()` / `pack()`：目录层＋按 [Agent Skills](https://agentskills.io) 开放规范打包（SKILL.md＋references/）
+- `check(reg, { body, references })`：结构化校验入口——引用缺席／实例与母版互相包含／母版未进正文／同块双发布，四个稳定码
+- `index()` / `pack()`：目录层＋按 [Agent Skills](https://agentskills.io) 开放规范打包（SKILL.md＋references/；传 `{ references }` 分层：这些块只进 references/）
 
 ## 用法
 
@@ -31,7 +32,7 @@ console.log(doc(reg, [{ target: 'goal' }, { useMethod: 'steps' }, { example: 'la
 ## 测试
 
 ```bash
-npm test   # node --test，18/18
+npm test   # node --test，28/28
 ```
 
 ## License

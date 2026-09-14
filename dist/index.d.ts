@@ -47,6 +47,20 @@ export type DocPart = {
 } | {
     example: string;
 };
+/** 诊断：结构化校验结果。code＝稳定机器码；target＝块标识；message＝人读说明（与 doc()/pack() 抛错文案逐字一致）。 */
+export interface Diagnostic {
+    /** missing-ref＝引用缺席；example-mutual-inclusion＝实例与母版互相包含（一字不抄）；master-not-in-body＝母版未进组装正文；double-publish＝同块双发布。 */
+    code: 'missing-ref' | 'example-mutual-inclusion' | 'master-not-in-body' | 'double-publish';
+    /** 出问题的块标识（实例 id／母版 id／target id 等）。 */
+    target: string;
+    /** 人读说明；与构建期抛错文案同源。 */
+    message: string;
+}
+/** check() 输入：body＝正文层引用（母版对齐只作用于本层）；references＝只进 references/ 的块（可选）。 */
+export interface CheckInput {
+    body: DocPart[];
+    references?: DocPart[];
+}
 /** 拼装：顺序走查引用，逐块取文字拼成 Markdown；引用缺席即抛错。 */
 export declare function doc(reg: Registry, parts: DocPart[]): string;
 /** 目录层（渐进披露的 metadata 层）：按 parts 顺序输出"块 id＋target（＋whenToUse）"清单；引用缺席即抛错。target 文字本身就是摘要，不新增概念。 */
@@ -56,9 +70,20 @@ export interface SkillMeta {
     name: string;
     description?: string;
 }
-/** 打包（输出适配器，非身份定义）：SKILL.md＝frontmatter＋目录＋正文；references/＝逐块文件（kebab-case）。产物目录名＝skill.name。写法层本征输出是 doc()；装配层的接入点是名字引用与 doc() 产物，不经过本函数。frontmatter 是闭集，将来块级信息走 metadata 的 methodblocks.* 命名空间。 */
-export declare function pack(reg: Registry, parts: DocPart[], skill: SkillMeta): {
+/** pack 选项：references＝只进 references/、不内联进正文的块（渐进披露分层）。缺省＝parts 全部（0.1.0 行为，向后兼容）。 */
+export interface PackOptions {
+    references?: DocPart[];
+}
+/** 打包（输出适配器，非身份定义）：SKILL.md＝frontmatter＋目录＋正文；references/＝逐块文件（kebab-case）。产物目录名＝skill.name。写法层本征输出是 doc()；装配层的接入点是名字引用与 doc() 产物，不经过本函数。frontmatter 是闭集，将来块级信息走 metadata 的 methodblocks.* 命名空间。传 options.references 时分层：这些块只进 references/、不内联进正文（同时出现在两处＝双发布即红）。 */
+export declare function pack(reg: Registry, parts: DocPart[], skill: SkillMeta, options?: PackOptions): {
     'SKILL.md': string;
     references: Record<string, string>;
 };
+/** 校验（可调用入口）：返回全部诊断，不抛错。判据与 doc()/pack() 共用同一批函数——同一处红，两条路都出。
+ *
+ * 覆盖：引用缺席（missing-ref，含 body 与 references 两层）、母版对齐（example-mutual-inclusion／master-not-in-body，仅 body 层）、
+ * 分层双发布（double-publish，须传 references）。不在本函数范围：注册表定义期的重复 id 与空 whenToUse（由 Registry 定义时抛错）、
+ * pack 专属红（name 规范／description 缺省／500 行——check 不接收 SkillMeta，设计如此）。
+ * 次序：body 判据（与 doc() 抛错次序同序）→ 双发布 → references 逐块取字；同一 (code,target,message) 只报一次（同一处红多来源触发合计一条）。 */
+export declare function check(reg: Registry, input: CheckInput): Diagnostic[];
 //# sourceMappingURL=index.d.ts.map

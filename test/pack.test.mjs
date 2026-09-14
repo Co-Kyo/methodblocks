@@ -75,3 +75,28 @@ test('P2/M2：打包同样触发母版对齐校验（一字不抄）', () => {
     /互相包含/,
   );
 });
+
+test('分层：references 选项——引用块只进 references/ 不内联；双发布即红；缺省向后兼容', () => {
+  const r = new Registry()
+    .target('g', '目标：分层测试。')
+    .useMethod('m', '动作：正文母版（对齐关系须在组装正文中可见）。')
+    .useMethod('sop', '动作：只进 references 的长篇 SOP。')
+    .example('e', '例子：对齐 m 的实例。', 'm');
+  const bodyParts = [{ target: 'g' }, { useMethod: 'm' }, { example: 'e' }];
+  const out = pack(r, bodyParts, { name: 'x1' }, { references: [{ useMethod: 'sop' }] });
+  assert.ok(!out['SKILL.md'].includes('只进 references 的长篇 SOP'), '引用块不得内联进正文');
+  assert.deepEqual(Object.keys(out.references), ['references/use-method-sop.md']);
+  assert.ok(out.references['references/use-method-sop.md'].includes('长篇 SOP'));
+  // 双发布：同一块同时进正文与 references 即红
+  assert.throws(
+    () => pack(r, bodyParts, { name: 'x1' }, { references: [{ useMethod: 'm' }] }),
+    /双发布/,
+  );
+  // 缺省行为（0.1.0）不变：references＝parts 全部
+  const legacy = pack(r, bodyParts, { name: 'x1' });
+  assert.deepEqual(Object.keys(legacy.references).sort(), [
+    'references/example-e.md',
+    'references/target-g.md',
+    'references/use-method-m.md',
+  ]);
+});

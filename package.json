@@ -1,6 +1,6 @@
 {
   "name": "methodblocks",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "把方法论做成积木：面向执行的 markdown 积木化——目标/动作/例三部件，引用名字即引用文字，缺席即红。不做通用 markdown 工具；只认部件与拼装，不认编排。",
   "type": "module",
   "main": "./dist/index.js",
