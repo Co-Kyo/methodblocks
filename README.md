@@ -35,6 +35,12 @@ console.log(doc(reg, [{ target: 'goal' }, { useMethod: 'steps' }, { example: 'la
 npm test   # node --test，28/28
 ```
 
+## 在 skillnomad 组合中的位置
+
+写法层（内容侧的作者语言）：块集经 `blockModule()` 成为模块内容源，构建期块校验走可选 `config.structure`。
+组合关系见 skillnomad 仓 `docs/guide/toolchain.md`（官方工具组合：`skillnomad` × `methodblocks` × `markrefs`）；
+集成形态见《P2 集成前置包》（v3，审核关已通过）。
+
 ## License
 
 MIT
