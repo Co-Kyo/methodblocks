@@ -1,12 +1,16 @@
 // ============================================================
-// methodblocks — 把方法论做成积木：面向执行的 markdown 积木化
+// methodblocks — 执行文档语义层：目标/判据/拼装的形状定义者
 //
-// 只解决两件事：
-// 1. 多个 Markdown 的引用问题：精心写的文字给名字，引用名字即引用文字，写错名字构建即红；
-// 2. 原语 API 的描述问题：target/useMethod/example/doc，外加 index/pack（目录与打包，对齐 Agent Skills 渐进披露）；包住散文，不翻译散文。
+// 解决三件事：
+// 1. 文字的命名与拼装：块文字给名字，按名字取字拼成文档；名字没注册即红。
+//    （注意：这是 Registry 内存查表，与磁盘文件的存在性校验无关——后者是 markrefs 的职责。）
+// 2. 目标的可判定化：target＝可判定目标（claim），evidence＝支撑目标的判据
+//    （机器判据/人工判据），判据必须归属目标；inspectTargetShape() 体检无判据的目标（target-slogan 等四类）；
+// 3. 原语 API：target/useMethod/example/evidence/doc，外加 index/pack
+//    （目录与打包，对齐 Agent Skills 渐进披露）；包住散文，不翻译散文。
 //
 // 不认识任何编排与运行时概念（step、pipeline、任务组等）——那不是这里的职责。
-// 文字还是文字，只给名字，能被引用，能被组合。
+// 本库管形状（部件/判据/体检），编排（谁调用、怎么连成流水线）由上层组合完成。
 // ============================================================
 /** 部件注册表：id → 文字；重复 id 即抛错（引用关系从口头约定变机器可查）。 */
 export class Registry {
@@ -15,6 +19,7 @@ export class Registry {
     methodWhen = new Map();
     examples = new Map();
     exampleMaster = new Map();
+    evidences = new Map();
     /** 定义 target：id 已存在即抛错。 */
     target(id, text) {
         if (this.targets.has(id)) {
@@ -46,6 +51,17 @@ export class Registry {
         if (master !== undefined) {
             this.exampleMaster.set(id, master);
         }
+        return this;
+    }
+    /** 定义 evidence（判据）：id 已存在即抛错；targetId 指向的 target 必须已定义（缺席即抛——判据挂在不存在目标上＝悬空，同引用缺席口径）。 */
+    evidence(id, kind, text, targetId) {
+        if (this.evidences.has(id)) {
+            throw new Error(`methodblocks: evidence 已存在: ${id}`);
+        }
+        if (!this.targets.has(targetId)) {
+            throw new Error(`methodblocks: evidence ${id} 归属的 target 未定义: ${targetId}`);
+        }
+        this.evidences.set(id, { id, kind, text, targetId });
         return this;
     }
     /** 取 target 文字：缺席即抛错（拼错名字构建即红）。 */
@@ -81,6 +97,27 @@ export class Registry {
     getExampleMaster(id) {
         this.getExample(id);
         return this.exampleMaster.get(id);
+    }
+    /** 取判据：缺席即抛错。 */
+    getEvidence(id) {
+        const hit = this.evidences.get(id);
+        if (hit === undefined) {
+            throw new Error(`methodblocks: 未定义的 evidence: ${id}`);
+        }
+        return hit;
+    }
+    /** 某目标下的全部判据（登记顺序）；目标 id 缺席即抛错。 */
+    getEvidencesOf(targetId) {
+        this.getTarget(targetId);
+        return [...this.evidences.values()].filter((e) => e.targetId === targetId);
+    }
+    /** 全部判据（登记顺序，普通对象数组——纯函数体检/归组的输入形状）。 */
+    getAllEvidences() {
+        return [...this.evidences.values()];
+    }
+    /** 全部目标（登记顺序，普通对象数组）。 */
+    getAllTargets() {
+        return [...this.targets.entries()].map(([id, text]) => ({ id, text }));
     }
 }
 /** 逐块取字预检：引用缺席转成诊断（不抛错）。 */
@@ -203,7 +240,7 @@ const SKILL_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 function yamlDoubleQuoted(s) {
     return '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n') + '"';
 }
-/** 打包（输出适配器，非身份定义）：SKILL.md＝frontmatter＋目录＋正文；references/＝逐块文件（kebab-case）。产物目录名＝skill.name。写法层本征输出是 doc()；装配层的接入点是名字引用与 doc() 产物，不经过本函数。frontmatter 是闭集，将来块级信息走 metadata 的 methodblocks.* 命名空间。传 options.references 时分层：这些块只进 references/、不内联进正文（同时出现在两处＝双发布即红）。 */
+/** 打包（输出适配器，非身份定义）：SKILL.md＝frontmatter＋目录＋正文；references/＝逐块文件（kebab-case）。产物目录名＝skill.name。写法层本征输出是 doc()；使用方的接入点是名字引用与 doc() 产物，不经过本函数。frontmatter 是闭集。传 options.references 时分层：这些块只进 references/、不内联进正文（同时出现在两处＝双发布即红）。 */
 export function pack(reg, parts, skill, options = {}) {
     // P1：name 合 Agent Skills 规范
     if (skill.name.length === 0 || skill.name.length > 64 || !SKILL_NAME_RE.test(skill.name)) {
@@ -272,5 +309,63 @@ export function check(reg, input) {
         seen.add(key);
         return true;
     });
+}
+/**
+ * 目标形状体检：口号／孤儿／悬空／重复四类，全部结构可判。
+ * 语义重复（两条目标换了词说同一件事）机检不到——必须人判，不在本函数射程。
+ */
+export function inspectTargetShape(input) {
+    const out = [];
+    const ids = input.targets.map((t) => t.id);
+    for (const id of ids) {
+        if (ids.indexOf(id) !== ids.lastIndexOf(id)) {
+            out.push({
+                code: 'target-duplicate',
+                targetId: id,
+                blocking: true,
+                message: `两个目标用了同一个 id「${id}」——判据会全挂到第一条上，第二条永远拿不到判据`,
+            });
+        }
+    }
+    const known = new Set(ids);
+    const byTarget = new Map();
+    for (const e of input.evidences) {
+        if (!known.has(e.targetId)) {
+            out.push({
+                code: 'evidence-dangling',
+                targetId: e.targetId,
+                evidenceId: e.id,
+                blocking: true,
+                message: `判据「${e.id}」挂到了一个不存在的目标「${e.targetId}」`,
+            });
+            continue;
+        }
+        byTarget.set(e.targetId, (byTarget.get(e.targetId) ?? 0) + 1);
+    }
+    for (const t of input.targets) {
+        if ((byTarget.get(t.id) ?? 0) === 0) {
+            out.push({
+                code: 'target-slogan',
+                targetId: t.id,
+                blocking: true,
+                message: `目标是句口号，没有任何判据支撑：「${t.text}」——要么给它挂判据，要么别写这条目标`,
+            });
+        }
+    }
+    return out;
+}
+/** 归组：判据按 targetId 分组（渲染用——"目标下挂判据"由使用方渲染，这里只给分组结果）。缺席的 target id 也会成组（体检会报悬空，这里不拦）。 */
+export function groupEvidences(input) {
+    const groups = new Map();
+    for (const t of input.targets)
+        groups.set(t.id, []);
+    for (const e of input.evidences) {
+        const list = groups.get(e.targetId);
+        if (list)
+            list.push(e);
+        else
+            groups.set(e.targetId, [e]);
+    }
+    return groups;
 }
 //# sourceMappingURL=index.js.map

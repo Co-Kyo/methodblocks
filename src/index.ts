@@ -1,24 +1,42 @@
 // ============================================================
-// methodblocks — 把方法论做成积木：面向执行的 markdown 积木化
+// methodblocks — 执行文档语义层：目标/判据/拼装的形状定义者
 //
-// 只解决两件事：
-// 1. 多个 Markdown 的引用问题：精心写的文字给名字，引用名字即引用文字，写错名字构建即红；
-// 2. 原语 API 的描述问题：target/useMethod/example/doc，外加 index/pack（目录与打包，对齐 Agent Skills 渐进披露）；包住散文，不翻译散文。
+// 解决三件事：
+// 1. 文字的命名与拼装：块文字给名字，按名字取字拼成文档；名字没注册即红。
+//    （注意：这是 Registry 内存查表，与磁盘文件的存在性校验无关——后者是 markrefs 的职责。）
+// 2. 目标的可判定化：target＝可判定目标（claim），evidence＝支撑目标的判据
+//    （机器判据/人工判据），判据必须归属目标；inspectTargetShape() 体检无判据的目标（target-slogan 等四类）；
+// 3. 原语 API：target/useMethod/example/evidence/doc，外加 index/pack
+//    （目录与打包，对齐 Agent Skills 渐进披露）；包住散文，不翻译散文。
 //
 // 不认识任何编排与运行时概念（step、pipeline、任务组等）——那不是这里的职责。
-// 文字还是文字，只给名字，能被引用，能被组合。
+// 本库管形状（部件/判据/体检），编排（谁调用、怎么连成流水线）由上层组合完成。
 // ============================================================
 
-/** 目标部件：一到两句话的简洁陈述，只说做什么＋做到什么算好，不展开。 */
+/** 目标部件：可判定目标（claim）——指着产物能判过/不过的陈述；判据经 targetId 归属到它。 */
 export interface TargetDef {
   id: string;
+  /** 可判定目标（claim）。 */
   text: string;
 }
 
-/** 动作部件：母版（master）——一块精心写的动作逻辑文字（分步＋判定全塞此处）；散文原样保留。whenToUse＝一句话适用条件（散文，可选，写给读它的人/agent，不做机器判定）。 */
+/** 判据部件：支撑某个 target 的可执行检验——kind='machine'＝机器可跑（文件存在/可解析/字段…），kind='human'＝人可判（检查项，期望口径写在 text）。 */
+export interface EvidenceDef {
+  /** 判据标识（使用方按它回填自己的规则 id）。 */
+  id: string;
+  /** 'machine'＝机器判据；'human'＝人工判据。 */
+  kind: 'machine' | 'human';
+  /** 判据正文：怎么判（机器＝校验描述；人工＝label＋期望口径）。 */
+  text: string;
+  /** 归属的 target id。 */
+  targetId: string;
+}
+
+/** 动作部件：母版（master）——一块精心写的动作逻辑文字（分步＋判定全塞此处）；散文原样保留。 */
 export interface MethodDef {
   id: string;
   text: string;
+  /** 一句话适用条件（写给在多套方法之间做选择的人/agent，不做机器判定）。未声明＝该方法显式声明自己无适用限制——不是"忘了写"。 */
   whenToUse?: string;
 }
 
@@ -36,6 +54,7 @@ export class Registry {
   private readonly methodWhen = new Map<string, string>();
   private readonly examples = new Map<string, string>();
   private readonly exampleMaster = new Map<string, string>();
+  private readonly evidences = new Map<string, EvidenceDef>();
 
   /** 定义 target：id 已存在即抛错。 */
   target(id: string, text: string): this {
@@ -46,7 +65,7 @@ export class Registry {
     return this;
   }
 
-  /** 定义 useMethod：id 已存在即抛错；whenToUse＝一句话适用条件（可选；空串即红——要么不给、要么非空）。 */
+  /** 定义 useMethod：id 已存在即抛错；whenToUse＝一句话适用条件（可选；空串即红）。未声明＝显式表示该方法无适用限制。 */
   useMethod(id: string, text: string, whenToUse?: string): this {
     if (this.methods.has(id)) {
       throw new Error(`methodblocks: useMethod 已存在: ${id}`);
@@ -70,6 +89,18 @@ export class Registry {
     if (master !== undefined) {
       this.exampleMaster.set(id, master);
     }
+    return this;
+  }
+
+  /** 定义 evidence（判据）：id 已存在即抛错；targetId 指向的 target 必须已定义（缺席即抛——判据挂在不存在目标上＝悬空，同引用缺席口径）。 */
+  evidence(id: string, kind: 'machine' | 'human', text: string, targetId: string): this {
+    if (this.evidences.has(id)) {
+      throw new Error(`methodblocks: evidence 已存在: ${id}`);
+    }
+    if (!this.targets.has(targetId)) {
+      throw new Error(`methodblocks: evidence ${id} 归属的 target 未定义: ${targetId}`);
+    }
+    this.evidences.set(id, { id, kind, text, targetId });
     return this;
   }
 
@@ -110,6 +141,31 @@ export class Registry {
   getExampleMaster(id: string): string | undefined {
     this.getExample(id);
     return this.exampleMaster.get(id);
+  }
+
+  /** 取判据：缺席即抛错。 */
+  getEvidence(id: string): EvidenceDef {
+    const hit = this.evidences.get(id);
+    if (hit === undefined) {
+      throw new Error(`methodblocks: 未定义的 evidence: ${id}`);
+    }
+    return hit;
+  }
+
+  /** 某目标下的全部判据（登记顺序）；目标 id 缺席即抛错。 */
+  getEvidencesOf(targetId: string): EvidenceDef[] {
+    this.getTarget(targetId);
+    return [...this.evidences.values()].filter((e) => e.targetId === targetId);
+  }
+
+  /** 全部判据（登记顺序，普通对象数组——纯函数体检/归组的输入形状）。 */
+  getAllEvidences(): EvidenceDef[] {
+    return [...this.evidences.values()];
+  }
+
+  /** 全部目标（登记顺序，普通对象数组）。 */
+  getAllTargets(): TargetDef[] {
+    return [...this.targets.entries()].map(([id, text]) => ({ id, text }));
   }
 }
 
@@ -264,7 +320,7 @@ export interface PackOptions {
   references?: DocPart[];
 }
 
-/** 打包（输出适配器，非身份定义）：SKILL.md＝frontmatter＋目录＋正文；references/＝逐块文件（kebab-case）。产物目录名＝skill.name。写法层本征输出是 doc()；装配层的接入点是名字引用与 doc() 产物，不经过本函数。frontmatter 是闭集，将来块级信息走 metadata 的 methodblocks.* 命名空间。传 options.references 时分层：这些块只进 references/、不内联进正文（同时出现在两处＝双发布即红）。 */
+/** 打包（输出适配器，非身份定义）：SKILL.md＝frontmatter＋目录＋正文；references/＝逐块文件（kebab-case）。产物目录名＝skill.name。写法层本征输出是 doc()；使用方的接入点是名字引用与 doc() 产物，不经过本函数。frontmatter 是闭集。传 options.references 时分层：这些块只进 references/、不内联进正文（同时出现在两处＝双发布即红）。 */
 export function pack(reg: Registry, parts: DocPart[], skill: SkillMeta, options: PackOptions = {}): { 'SKILL.md': string; references: Record<string, string> } {
   // P1：name 合 Agent Skills 规范
   if (skill.name.length === 0 || skill.name.length > 64 || !SKILL_NAME_RE.test(skill.name)) {
@@ -328,4 +384,86 @@ export function check(reg: Registry, input: CheckInput): Diagnostic[] {
     seen.add(key);
     return true;
   });
+}
+
+
+// ============================================================
+// 目标形状（Target Shape）：判据体系的数据面体检与归组
+// 输入＝普通对象数组（不要求 Registry 实例）；纯函数，不认识编排。
+// 判据必须归属目标，目标必须有判据（inspectTargetShape() 据此体检）。
+// ============================================================
+
+/** 形状体检输入：目标与判据的普通对象数组（使用方从自己的声明结构映射而来）。 */
+export interface TargetShapeInput {
+  targets: TargetDef[];
+  evidences: EvidenceDef[];
+}
+
+/** 形状体检诊断：code＝稳定机器码；targetId＝涉事目标；message＝人读说明。 */
+export interface ShapeNote {
+  /** target-slogan＝目标无判据（口号）；evidence-orphan＝判据未归属；evidence-dangling＝判据挂在不存在目标；target-duplicate＝目标 id 重复。 */
+  code: 'target-slogan' | 'evidence-orphan' | 'evidence-dangling' | 'target-duplicate';
+  targetId: string;
+  /** 涉事判据 id（孤儿/悬空时有）。 */
+  evidenceId?: string;
+  message: string;
+  /** 结构破了（使用方应阻断）；还是可继续的提示。 */
+  blocking: boolean;
+}
+
+/**
+ * 目标形状体检：口号／孤儿／悬空／重复四类，全部结构可判。
+ * 语义重复（两条目标换了词说同一件事）机检不到——必须人判，不在本函数射程。
+ */
+export function inspectTargetShape(input: TargetShapeInput): ShapeNote[] {
+  const out: ShapeNote[] = [];
+  const ids = input.targets.map((t) => t.id);
+  for (const id of ids) {
+    if (ids.indexOf(id) !== ids.lastIndexOf(id)) {
+      out.push({
+        code: 'target-duplicate',
+        targetId: id,
+        blocking: true,
+        message: `两个目标用了同一个 id「${id}」——判据会全挂到第一条上，第二条永远拿不到判据`,
+      });
+    }
+  }
+  const known = new Set(ids);
+  const byTarget = new Map<string, number>();
+  for (const e of input.evidences) {
+    if (!known.has(e.targetId)) {
+      out.push({
+        code: 'evidence-dangling',
+        targetId: e.targetId,
+        evidenceId: e.id,
+        blocking: true,
+        message: `判据「${e.id}」挂到了一个不存在的目标「${e.targetId}」`,
+      });
+      continue;
+    }
+    byTarget.set(e.targetId, (byTarget.get(e.targetId) ?? 0) + 1);
+  }
+  for (const t of input.targets) {
+    if ((byTarget.get(t.id) ?? 0) === 0) {
+      out.push({
+        code: 'target-slogan',
+        targetId: t.id,
+        blocking: true,
+        message: `目标是句口号，没有任何判据支撑：「${t.text}」——要么给它挂判据，要么别写这条目标`,
+      });
+    }
+  }
+  return out;
+}
+
+/** 归组：判据按 targetId 分组（渲染用——"目标下挂判据"由使用方渲染，这里只给分组结果）。缺席的 target id 也会成组（体检会报悬空，这里不拦）。 */
+export function groupEvidences(input: TargetShapeInput): Map<string, EvidenceDef[]> {
+  const groups = new Map<string, EvidenceDef[]>();
+  for (const t of input.targets) groups.set(t.id, []);
+  for (const e of input.evidences) {
+    const list = groups.get(e.targetId);
+    if (list) list.push(e);
+    else groups.set(e.targetId, [e]);
+  }
+  return groups;
 }
